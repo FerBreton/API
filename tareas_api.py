@@ -1,54 +1,76 @@
-from flask import Flask, jsonify, abort, request
+import os
+from flask import Flask, request, jsonify, abort
+from firebase_admin import credentials, db, initialize_app
+
 
 app = Flask(__name__)
 
-tasks = [
-    {
-        'id': 1,
-        'name': 'Ir a bañarse',
-        'check': False
-    },
-    {
-        'id': 2,
-        'name': 'Estudiar para los parciales',
-        'check': False
-    }
-]
+cred = credentials.Certificate('firebase-adminsdk.json')
+default_app = initialize_app(cred, {
+    'databaseURL': 'https://test-api-6566f-default-rtdb.firebaseio.com/'
+})
 
-@app.route('/')
-def hello_world():
-    return "API de un TO-DO List"
+ref = db.reference('tasks')
+#READ
+@app.route('/tasks', methods=['GET'])
+def read():
+    try:
+        task_id = request.args.get('id')
+        if task_id:
+            task = ref.child(task_id)
+            return jsonify(task.get()), 200
+        else:
+            tasks = ref.get()
+            return jsonify(tasks), 200
+    except Exception as e:
+        return f"Ocurrio el siguiente error: {e}"
 
-@app.route('/api/tasks', methods = ['GET'])
-def get_tasks():
-    return jsonify({'tasks':tasks})
-
-@app.route('/api/tasks/<int:id>', methods = ['GET'])
-def get_task(id):
-    '''this_task = 0
-    for task in tasks:
-        if task['id'] == id:
-            this_task = task'''
-
-    this_task = [task for task in tasks if task['id'] == id]
-
-    if len(this_task) == 0:
-        abort(404)
-
-    return jsonify({'task':this_task[0]})
-
-@app.route('/api/tasks', methods = ['POST'])
-def create_task():
+#CREATE
+@app.route('/add', methods=['POST'])
+def create():
     if not request.json:
         abort(404)
     
-    task = {
-        'id': len(tasks) + 1,
-        'name': request.json['name'],
-        'check': False
-    }
-    tasks.append(task)
-    return jsonify({'task': task}), 201
+    try:
+        id = request.json['id']
+        task = {
+            'id': id,
+            'name': request.json['name'],
+            'check': False
+        }
+        ref.child(id).set(task)
+        return jsonify({"sucess": True}), 200
+    except Exception as e:
+        return f"Ocurrio el siguiente error: {e}"
+
+#UPDATE
+@app.route('/update', methods=['PUT'])
+def update():
+    try:
+        id = request.json['id']
+        if ref.child(id).get()==None:
+            abort(404)
+        if not request.json:
+            abort(400)
+        ref.child(id).update(request.json)
+        return jsonify({"sucess": True}), 200
+    except Exception as e:
+        return f"Ocurrio el siguiente error: {e}"
+
+#DELETE
+@app.route('/delete', methods=['DELETE'])
+def delete():
+    try:
+        task_id = request.args.get('id')
+        if ref.child(task_id).get()==None:
+            abort(404)
+        ref.child(task_id).delete()
+        return jsonify({"sucess": True}), 200
+    except Exception as e:
+        return f"Ocurrio el siguiente error: {e}"
+
+port = int(os.environ.get('PORT', 8000))
 
 if __name__ == '__main__':
+    app.run(threaded=True, host='0.0.0.0', port=port)
     app.run(debug=True)
